@@ -1,0 +1,168 @@
+name: Publish Python distribution to PyPI and TestPyPI
+
+on: push
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install a softhsm
+      run: |
+        sudo apt-get update && sudo apt-get -y install libsofthsm2-dev opensc && mkdir /tmp/tokens
+
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+  
+    - name: Test with pytest
+      env:
+        SOFTHSM2_CONF: testing/softhsm.conf
+
+        CICD_SA_PEM: ${{ secrets.CICD_SA_PEM }}    
+        CICD_SA_EMAIL: ${{ secrets.CICD_SA_EMAIL }}   
+        CICD_SA_PROJECT: ${{ secrets.CICD_SA_PROJECT }}    
+        CICD_BUCKET: ${{ secrets.CICD_BUCKET }}   
+
+        CICD_AWS_CERT: ${{ secrets.CICD_AWS_CERT }}    
+        CICD_AWS_PEM: ${{ secrets.CICD_AWS_PEM }}   
+        CICD_AWS_REGION: ${{ secrets.CICD_AWS_REGION }}  
+        CICD_AWS_TRUST_ANCHOR_ARN: ${{ secrets.CICD_AWS_TRUST_ANCHOR_ARN }}   
+        CICD_AWS_ROLE_ARN: ${{ secrets.CICD_AWS_ROLE_ARN }}    
+        CICD_AWS_PROFILE_ARN: ${{ secrets.CICD_AWS_PROFILE_ARN }}  
+        CICD_AWS_ACCESS_KEY: ${{ secrets.CICD_AWS_ACCESS_KEY }}    
+        CICD_AWS_ACCESS_SECRET: ${{ secrets.CICD_AWS_ACCESS_SECRET }}  
+        CICD_AWS_HMAC_REGION: ${{ secrets.CICD_AWS_HMAC_REGION }} 
+
+        CICD_AZURE_CLIENT_ID: ${{ secrets.CICD_AZURE_CLIENT_ID }}   
+        CICD_AZURE_TENANT_ID: ${{ secrets.CICD_AZURE_TENANT_ID }}    
+        CICD_AZURE_STORAGEACCOUNT: ${{ secrets.CICD_AZURE_STORAGEACCOUNT }}  
+        CICD_AZURE_CONTAINER: ${{ secrets.CICD_AZURE_CONTAINER }}    
+        CICD_AZURE_CLIENT_PEM: ${{ secrets.CICD_AZURE_CLIENT_PEM }}  
+        CICD_AZURE_CERT: ${{ secrets.CICD_AZURE_CERT }} 
+
+        PYTHONDONTWRITEBYTECODE: 1
+      run: |
+        pip install logging pytest pytest-cov python-pkcs11 cryptography requests google-auth google-cloud-storage boto3 botocore azure-storage-blob azure-identity
+        pytest testing/test_all.py --junitxml=report.xml -p no:warnings
+
+    - name: Publish test results
+      uses: test-summary/action@v2
+      if: always()
+      with:
+        paths: 'report.xml'
+        output: test-summary.md
+  
+    - name: Upload test summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-summary
+        path: test-summary.md
+      if: always()
+      
+    - name: Install pypa/build
+      run: >-
+        python3 -m
+        pip install
+        build
+        --user
+    - name: Build a binary wheel and a source tarball
+      run: python3 -m build
+    - name: Store the distribution packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+
+  publish-to-pypi:
+    name: >-
+      Publish Python distribution to PyPI
+    if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
+    needs:
+    - build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cloud-auth-pkcs  # Replace <package-name> with your PyPI project name
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Publish distribution to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: >-
+      Sign the Python distribution with Sigstore
+      and upload them to GitHub Release
+    needs:
+    - publish-to-pypi
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # IMPORTANT: mandatory for making GitHub Releases
+      id-token: write  # IMPORTANT: mandatory for sigstore
+
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Sign the dists with Sigstore
+      uses: sigstore/gh-action-sigstore-python@v3.0.0
+      with:
+        inputs: >-
+          ./dist/*.tar.gz
+          ./dist/*.whl
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: >-
+        gh release create
+        '${{ github.ref_name }}'
+        --repo '${{ github.repository }}'
+        --notes ""
+    - name: Upload artifact signatures to GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      # Upload to GitHub Release using the `gh` CLI.
+      # `dist/` contains the built packages, and the
+      # sigstore-produced signatures and certificates.
+      run: >-
+        gh release upload
+        '${{ github.ref_name }}' dist/**
+        --repo '${{ github.repository }}'
+
+  publish-to-testpypi:
+    name: Publish Python  distribution  to TestPyPI
+    if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
+    needs:
+    - build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/cloud-auth-pkcs
+
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Publish distribution 📦 to TestPyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/

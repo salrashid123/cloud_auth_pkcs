@@ -1,0 +1,3 @@
+google-auth
+google-cloud-storage
+cloud_auth_pkcs[gcp]

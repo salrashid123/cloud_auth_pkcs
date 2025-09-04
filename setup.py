@@ -12,7 +12,7 @@ with io.open(readme_filename, encoding='utf-8') as readme_file:
 
 setuptools.setup(
     name="cloud_auth_pkcs",
-    version="0.0.1",
+    version="0.0.11",
     author="Sal Rashid",
     author_email="salrashid123@gmail.com",
     description="Python PKCS-11 based Credentials provider for AWS, Azure and GCP",

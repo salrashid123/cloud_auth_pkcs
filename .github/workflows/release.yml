@@ -46,6 +46,8 @@ jobs:
 
         PYTHONDONTWRITEBYTECODE: 1
       run: |
+        pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so  --slot-index=0 --init-token --label="token1" --so-pin="123456"
+        pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so  --label="token1" --init-pin --so-pin "123456" --pin mynewpin        
         pip install logging pytest pytest-cov python-pkcs11 cryptography requests google-auth google-cloud-storage boto3 botocore azure-storage-blob azure-identity
         pytest testing/test_all.py --junitxml=report.xml -p no:warnings
 

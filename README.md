@@ -1,6 +1,6 @@
-## Cloud Auth Library using PKCS-11
+## Python auth library for GCP, AWS and Azure using PKCS-11 based credentials
 
-Python library which supports `TPPKCS-11` embedded authenticated credentials for various cloud providers.
+Python library which supports `PKCS-11` embedded authenticated credentials for various cloud providers.
 
 The supported set of providers and credential types:
 
